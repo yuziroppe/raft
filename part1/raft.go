@@ -202,6 +202,11 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	return nil
 }
 
+// Election timer
+// 全フォロワーが継続的に実行, 現在のリーダーから連絡を受けるとき毎回リスタート
+// リーダーは定期的にheartbeatsを送る, heartbeatsが止まるのならリーダーはクラッシュ, 疎通切れとみなす
+// そして選挙が開始(Candidate stateに変化)
+
 // electionTimeout generates a pseudo-random election timeout duration.
 func (cm *ConsensusModule) electionTimeout() time.Duration {
 	// If RAFT_FORCE_MORE_REELECTION is set, stress-test by deliberately
@@ -216,10 +221,10 @@ func (cm *ConsensusModule) electionTimeout() time.Duration {
 
 // runElectionTimer implements an election timer. It should be launched whenever
 // we want to start a timer towards becoming a candidate in a new election.
-//
 // This function is blocking and should be launched in a separate goroutine;
 // it's designed to work for a single (one-shot) election timer, as it exits
 // whenever the CM state changes from follower/candidate or the term changes.
+//
 func (cm *ConsensusModule) runElectionTimer() {
 	timeoutDuration := cm.electionTimeout()
 	cm.mu.Lock()
@@ -273,7 +278,7 @@ func (cm *ConsensusModule) startElection() {
 
 	var votesReceived int32 = 1
 
-	// Send RequestVote RPCs to all other servers concurrently.
+	// Send RequestVote RPCs to all other servers concurrently. 俺に送れよ！！！
 	for _, peerId := range cm.peerIds {
 		go func(peerId int) {
 			args := RequestVoteArgs{
