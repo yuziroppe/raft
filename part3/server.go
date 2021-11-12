@@ -75,29 +75,6 @@ func (s *Server) Serve() {
 	log.Printf("[%v] listening at %s", s.serverId, s.listener.Addr())
 	s.mu.Unlock()
 
-	go func() {
-		// 0.2秒ごとに1%バッテリー残量が減り続ける
-		// 10%になったら充電を開始する
-		increase := false
-		for {
-			time.Sleep(200 * time.Millisecond)
-
-			if increase {
-				s.battery++
-				if s.battery == 100 {
-					time.Sleep(200 * time.Millisecond)
-					increase = false
-				}
-			} else {
-				s.battery--
-				if s.battery < 10 {
-					time.Sleep(200 * time.Millisecond)
-					increase = true
-				}
-			}
-		}
-	}()
-
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
