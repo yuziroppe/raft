@@ -24,21 +24,17 @@ func NewBattery() *Battery {
 }
 
 func (b *Battery) NormalAction() {
-	for {
-		time.Sleep(200 * time.Millisecond)
-
-		if b.onCharge {
-			b.percent++
-			if b.percent == 100 {
-				time.Sleep(200 * time.Millisecond)
-				b.onCharge = false
-			}
-		} else {
-			b.percent++
-			if b.percent < 10 {
-				time.Sleep(200 * time.Millisecond)
-				b.onCharge = true
-			}
+	if b.onCharge {
+		b.percent++
+		if b.percent == 100 {
+			time.Sleep(200 * time.Millisecond)
+			b.onCharge = false
+		}
+	} else {
+		b.percent++
+		if b.percent < 10 {
+			time.Sleep(200 * time.Millisecond)
+			b.onCharge = true
 		}
 	}
 }
