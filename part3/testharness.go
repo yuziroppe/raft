@@ -27,11 +27,11 @@ type Harness struct {
 	cluster []*Server
 	storage []*MapStorage
 
-	// commitChans has a channel per server in cluster with the commi channel for
+	// commitChans has a channel per server in cluster with the commit channel for
 	// that server.
 	commitChans []chan CommitEntry
 
-	// commits at index i holds the sequence of commits made by server i so far.
+	// commits at index i holds the sequence of commits made by server[i] so far.
 	// It is populated by goroutines that listen on the corresponding commitChans
 	// channel.
 	commits [][]CommitEntry
@@ -98,6 +98,7 @@ func NewHarness(t *testing.T, n int) *Harness {
 		n:           n,
 		t:           t,
 	}
+
 	for i := 0; i < n; i++ {
 		go h.collectCommits(i)
 	}
@@ -347,6 +348,7 @@ func sleepMs(n int) {
 // to the corresponding commits[i]. It's blocking and should be run in a
 // separate goroutine. It returns when commitChans[i] is closed.
 func (h *Harness) collectCommits(i int) {
+	// 受け取ったchannelをずっと
 	for c := range h.commitChans[i] {
 		h.mu.Lock()
 		tlog("collectCommits(%d) got %+v", i, c)

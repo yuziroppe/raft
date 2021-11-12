@@ -30,6 +30,7 @@ type Server struct {
 
 	cm       *ConsensusModule
 	storage  Storage
+	battery  *Battery
 	rpcProxy *RPCProxy
 
 	rpcServer *rpc.Server
@@ -48,6 +49,7 @@ func NewServer(serverId int, peerIds []int, storage Storage, ready <-chan interf
 	s.serverId = serverId
 	s.peerIds = peerIds
 	s.peerClients = make(map[int]*rpc.Client)
+	s.battery = NewBattery()
 	s.storage = storage
 	s.ready = ready
 	s.commitChan = commitChan
@@ -66,12 +68,35 @@ func (s *Server) Serve() {
 	s.rpcServer.RegisterName("ConsensusModule", s.rpcProxy)
 
 	var err error
-	s.listener, err = net.Listen("tcp", ":0")
+	s.listener, err = net.Listen("tcp", ":0") // ポート0で開くぜ
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("[%v] listening at %s", s.serverId, s.listener.Addr())
 	s.mu.Unlock()
+
+	go func() {
+		// 0.2秒ごとに1%バッテリー残量が減り続ける
+		// 10%になったら充電を開始する
+		increase := false
+		for {
+			time.Sleep(200 * time.Millisecond)
+
+			if increase {
+				s.battery++
+				if s.battery == 100 {
+					time.Sleep(200 * time.Millisecond)
+					increase = false
+				}
+			} else {
+				s.battery--
+				if s.battery < 10 {
+					time.Sleep(200 * time.Millisecond)
+					increase = true
+				}
+			}
+		}
+	}()
 
 	s.wg.Add(1)
 	go func() {
@@ -89,6 +114,7 @@ func (s *Server) Serve() {
 			}
 			s.wg.Add(1)
 			go func() {
+				// ServeConnはブロックし、クライアントとの疎通が切れるまで接続を提供する
 				s.rpcServer.ServeConn(conn)
 				s.wg.Done()
 			}()
@@ -111,6 +137,9 @@ func (s *Server) DisconnectAll() {
 // Shutdown closes the server and waits for it to shut down properly.
 func (s *Server) Shutdown() {
 	s.cm.Stop()
+	// s.quit <- struct{}{} みたいなイメージか??
+	// 複数のgoroutineに一斉に通知できる
+	// refer. https://qiita.com/castaneai/items/7815f3563b256ae9b18d
 	close(s.quit)
 	s.listener.Close()
 	s.wg.Wait()
@@ -189,6 +218,7 @@ func (rpp *RPCProxy) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) 
 
 func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
+		// ランダムで1/10でdrop, 1/10でdelay
 		dice := rand.Intn(10)
 		if dice == 9 {
 			rpp.cm.dlog("drop AppendEntries")

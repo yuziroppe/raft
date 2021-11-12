@@ -76,6 +76,8 @@ type ConsensusModule struct {
 	// to peers.
 	server *Server
 
+	battery *Battery
+
 	// storage is used to persist state.
 	storage Storage
 
@@ -118,6 +120,7 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.peerIds = peerIds
 	cm.server = server
 	cm.storage = storage
+	cm.battery = server.battery
 	cm.commitChan = commitChan
 	cm.newCommitReadyChan = make(chan struct{}, 16)
 	cm.triggerAEChan = make(chan struct{}, 1)
@@ -309,6 +312,7 @@ type AppendEntriesReply struct {
 	ConflictTerm  int
 }
 
+// ApendEntriesを受け取った
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -317,6 +321,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	}
 	cm.dlog("AppendEntries: %+v", args)
 
+	// 現在のタームが古いことがわかった場合フォロワーになる
 	if args.Term > cm.currentTerm {
 		cm.dlog("... term out of date in AppendEntries")
 		cm.becomeFollower(args.Term)
@@ -324,6 +329,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 	reply.Success = false
 	if args.Term == cm.currentTerm {
+		// 現在のタームが同じで自身がフォロワーじゃない場合フォロワーになる
 		if cm.state != Follower {
 			cm.becomeFollower(args.Term)
 		}
@@ -331,7 +337,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 		// Does our log contain an entry at PrevLogIndex whose term matches
 		// PrevLogTerm? Note that in the extreme case of PrevLogIndex=-1 this is
-		// vacuously true.
+		// vacuously true. 明らかに真
 		if args.PrevLogIndex == -1 ||
 			(args.PrevLogIndex < len(cm.log) && args.PrevLogTerm == cm.log[args.PrevLogIndex].Term) {
 			reply.Success = true
@@ -367,6 +373,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.dlog("... setting commitIndex=%d", cm.commitIndex)
+				// channelに空structを投げる、誰か受け取ってくれ〜
 				cm.newCommitReadyChan <- struct{}{}
 			}
 		} else {
@@ -406,7 +413,7 @@ func (cm *ConsensusModule) electionTimeout() time.Duration {
 	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
 		return time.Duration(150) * time.Millisecond
 	} else {
-		return time.Duration(150+rand.Intn(150)) * time.Millisecond
+		return time.Duration(150+rand.Intn(150)-cm.battery.percent) * time.Millisecond
 	}
 }
 
@@ -618,18 +625,23 @@ func (cm *ConsensusModule) leaderSendAEs() {
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.mu.Lock()
 				defer cm.mu.Unlock()
+				// MEMO: heartbeat送って帰ってきたreplyのTermが最新の場合フォロワーに降格
 				if reply.Term > savedCurrentTerm {
 					cm.dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
 					return
 				}
 
+				// replyのタームが同じ、stateはLeader
 				if cm.state == Leader && savedCurrentTerm == reply.Term {
 					if reply.Success {
+						// リーダーにおけるとあるpeerの状態を更新
+						// ni ->  ni + len(entries)
 						cm.nextIndex[peerId] = ni + len(entries)
 						cm.matchIndex[peerId] = cm.nextIndex[peerId] - 1
 
 						savedCommitIndex := cm.commitIndex
+						// cm.commitIndex: matchindexが過半数よりも多い最大のindex
 						for i := cm.commitIndex + 1; i < len(cm.log); i++ {
 							if cm.log[i].Term == cm.currentTerm {
 								matchCount := 1
@@ -638,6 +650,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 										matchCount++
 									}
 								}
+								// 過半数より多い場合
 								if matchCount*2 > len(cm.peerIds)+1 {
 									cm.commitIndex = i
 								}
@@ -655,6 +668,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 					} else {
 						if reply.ConflictTerm >= 0 {
 							lastIndexOfTerm := -1
+							// ConflictTermの最新のlogのindex
 							for i := len(cm.log) - 1; i >= 0; i-- {
 								if cm.log[i].Term == reply.ConflictTerm {
 									lastIndexOfTerm = i
