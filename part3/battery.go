@@ -26,7 +26,7 @@ func NewBattery() *Battery {
 	return b
 }
 
-func (b *Battery) enough() bool {
+func (b *Battery) Enough() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
