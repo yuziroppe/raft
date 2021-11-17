@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"math"
 	"math/rand"
 	"sync"
@@ -12,30 +13,58 @@ type Battery struct {
 	percent  int // 0..100
 	onCharge bool
 	shutdown chan struct{}
+	live     bool
 }
 
 func NewBattery() *Battery {
 	b := new(Battery)
 	b.percent = initialPercent()
 	b.onCharge = false
-	b.shutdown = make(chan struct{}, 1)
+	b.live = true
+	b.shutdown = make(chan struct{})
 
 	return b
 }
 
+func (b *Battery) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.live = false
+	close(b.shutdown)
+}
+
 func (b *Battery) NormalAction() {
-	if b.onCharge {
-		b.percent++
-		if b.percent == 100 {
-			time.Sleep(200 * time.Millisecond)
-			b.onCharge = false
+	for {
+		b.mu.Lock()
+
+		if b.onCharge {
+			b.percent++
+			if b.percent == 100 {
+				time.Sleep(200 * time.Millisecond)
+				b.onCharge = false
+			}
+		} else {
+			b.percent--
+			if b.percent < 10 {
+				time.Sleep(200 * time.Millisecond)
+				b.onCharge = true
+			}
 		}
-	} else {
-		b.percent++
-		if b.percent < 10 {
-			time.Sleep(200 * time.Millisecond)
-			b.onCharge = true
+
+		if !b.live {
+			select {
+			case <-b.shutdown:
+				return
+			default:
+				log.Fatal("accept error")
+			}
 		}
+
+		log.Printf("battery: %v", b.percent)
+
+		time.Sleep(200 * time.Millisecond)
+		b.mu.Unlock()
 	}
 }
 

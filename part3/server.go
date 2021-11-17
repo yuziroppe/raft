@@ -75,17 +75,7 @@ func (s *Server) Serve() {
 	log.Printf("[%v] listening at %s", s.serverId, s.listener.Addr())
 	s.mu.Unlock()
 
-	go func() {
-		for {
-			time.Sleep(200 * time.Millisecond)
-			s.battery.NormalAction()
-
-			select {
-			case <-s.quit:
-				return
-			}
-		}
-	}()
+	go s.battery.NormalAction()
 
 	s.wg.Add(1)
 	go func() {
@@ -130,6 +120,7 @@ func (s *Server) Shutdown() {
 	// 複数のgoroutineに一斉に通知できる
 	// refer. https://qiita.com/castaneai/items/7815f3563b256ae9b18d
 	close(s.quit)
+	s.battery.Close()
 	s.listener.Close()
 	s.wg.Wait()
 }

@@ -86,6 +86,7 @@ func NewHarness(t *testing.T, n int) *Harness {
 		}
 		connected[i] = true
 	}
+	// ElectionTimerを始動
 	close(ready)
 
 	h := &Harness{

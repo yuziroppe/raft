@@ -76,8 +76,6 @@ type ConsensusModule struct {
 	// to peers.
 	server *Server
 
-	battery *Battery
-
 	// storage is used to persist state.
 	storage Storage
 
@@ -120,7 +118,6 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.peerIds = peerIds
 	cm.server = server
 	cm.storage = storage
-	cm.battery = server.battery
 	cm.commitChan = commitChan
 	cm.newCommitReadyChan = make(chan struct{}, 16)
 	cm.triggerAEChan = make(chan struct{}, 1)
@@ -413,7 +410,7 @@ func (cm *ConsensusModule) electionTimeout() time.Duration {
 	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
 		return time.Duration(150) * time.Millisecond
 	} else {
-		return time.Duration(150+rand.Intn(150)-cm.battery.percent) * time.Millisecond
+		return time.Duration(150+rand.Intn(150) /*-cm.battery.percent */) * time.Millisecond
 	}
 }
 
