@@ -120,7 +120,7 @@ func (s *Server) Shutdown() {
 	// 複数のgoroutineに一斉に通知できる
 	// refer. https://qiita.com/castaneai/items/7815f3563b256ae9b18d
 	close(s.quit)
-	s.battery.Close()
+	s.battery.Stop()
 	s.listener.Close()
 	s.wg.Wait()
 }
