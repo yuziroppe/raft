@@ -26,7 +26,14 @@ func NewBattery() *Battery {
 	return b
 }
 
-func (b *Battery) Close() {
+func (b *Battery) enough() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.live && (b.onCharge || b.percent >= 20)
+}
+
+func (b *Battery) Stop() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -40,14 +47,14 @@ func (b *Battery) NormalAction() {
 
 		if b.onCharge {
 			b.percent++
-			if b.percent == 100 {
-				time.Sleep(200 * time.Millisecond)
+			if b.percent >= 100 {
+				time.Sleep(500 * time.Millisecond)
 				b.onCharge = false
 			}
 		} else {
 			b.percent--
 			if b.percent < 10 {
-				time.Sleep(200 * time.Millisecond)
+				time.Sleep(600 * time.Millisecond)
 				b.onCharge = true
 			}
 		}

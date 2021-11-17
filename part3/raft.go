@@ -272,6 +272,11 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 		cm.becomeFollower(args.Term)
 	}
 
+	if !cm.server.battery.enough() {
+		cm.dlog("... battery is not enough in RequestVote")
+		cm.becomeFollower(args.Term)
+	}
+
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
